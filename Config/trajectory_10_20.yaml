@@ -1,0 +1,95 @@
+model:
+  target: Models.interpretable_diffusion.gaussian_diffusion.Diffusion_TS
+  params:
+    seq_length: 24
+    feature_size: 4
+    n_layer_enc: 3
+    n_layer_dec: 2
+    d_model: 64  # 4 X 16
+    timesteps: 500
+    sampling_timesteps: 500
+    loss_type: 'l1'
+    beta_schedule: 'cosine'
+    n_heads: 4
+    mlp_hidden_times: 4
+    attn_pd: 0.0
+    resid_pd: 0.0
+    kernel_size: 1
+    padding_size: 0
+
+solver:
+  base_lr: 1.0e-5
+  max_epochs: 18000
+  results_folder: ./Checkpoints_trajectory_10_20
+  gradient_accumulate_every: 2
+  save_cycle: 1800  # max_epochs // 10
+  ema:
+    decay: 0.995
+    update_interval: 10
+
+  scheduler:
+    target: engine.lr_sch.ReduceLROnPlateauWithWarmup
+    params:
+      factor: 0.5
+      patience: 4000
+      min_lr: 1.0e-5
+      threshold: 1.0e-1
+      threshold_mode: rel
+      warmup_lr: 8.0e-4
+      warmup: 500
+      verbose: False
+
+dataloader:
+  train_dataset:
+    target: Utils.Data_utils.real_datasets.CustomTrajectoryDataset
+    params:
+      name: trajectory_10_20
+      data_root: ./Data/datasets/trajectory_10_20
+      window: 24  # seq_length
+      proportion: 0.7  # Set to rate < 1 if training conditional generation
+      save2npy: True
+      neg_one_to_one: True
+      seed: 123
+      period: train
+      output_dir: ./Trajectory_10_20_OUTPUT  # 输出目录 没起效，被build_dataloader函数中的代码覆盖了
+      missing_ratio: 0.2 # 缺失值比例， 测试集可以使用，训练集不需要
+      style: separate # 掩码类型， "separate" or "mask"
+      distribution: geometric # 掩码分布， "geometric" or "random"
+      mean_mask_length: 3 # 平均掩码长度
+      data_columns_dtype:
+        Id: str
+        Longitude: float32
+        Latitude: float32
+        Altitude: float32
+        TAS: float32
+      split_mode: 'trajectory' # 'in-trajectory' or 'trajectory'
+  test_dataset:
+    target: Utils.Data_utils.real_datasets.CustomTrajectoryDataset
+    params:
+      name: trajectory_10_20
+      data_root: ./Data/datasets/trajectory_10_20
+      proportion: 0.7  # rate
+      window: 24  # seq_length
+      save2npy: True
+      neg_one_to_one: True
+      seed: 123
+      period: test
+      output_dir: ./Trajectory_10_20_OUTPUT  # 输出目录
+      missing_ratio: 0.2 # 缺失值比例， 测试集可以使用，训练集不需要
+      style: separate # 掩码类型， "separate" or "mask"
+      distribution: geometric # 掩码分布， "geometric" or "random"
+      mean_mask_length: 3 # 平均掩码长度
+      data_columns_dtype:
+        Id: str #飞行轨迹的id
+        Longitude: float32
+        Latitude: float32
+        Altitude: float32
+        TAS: float32
+      split_mode: 'trajectory'
+    coefficient: 1.0e-2
+    step_size: 5.0e-2
+    sampling_steps: 200
+
+  batch_size: 256
+  sample_size: 256
+  shuffle: True

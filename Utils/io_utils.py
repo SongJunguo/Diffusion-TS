@@ -40,27 +40,58 @@ def write_args(args, path):
 
 def seed_everything(seed, cudnn_deterministic=False):
     """
-    Function that sets seed for pseudo-random number generators in:
-    pytorch, numpy, python.random
-    
-    Args:
-        seed: the integer value seed for global random state
+    这个函数用于设置伪随机数生成器的种子，以保证实验的可重复性和一致性。
+
+    它设置了以下库的随机种子:
+    - Python内置的 `random` 模块
+    - NumPy
+    - PyTorch (CPU和GPU)
+
+    参数:
+    - seed: 用于设置全局随机状态的整数值
+    - cudnn_deterministic: 是否启用CuDNN的确定性模式（默认为False）
     """
-    if seed is not None:
-        print(f"Global seed set to {seed}")
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
+    if seed is not None:  # 如果提供了seed值
+        print(f"全局种子设置为 {seed}")  # 打印种子值
+        random.seed(seed)  # 设置Python内置random模块的种子
+        np.random.seed(seed)  # 设置NumPy的随机种子
+        torch.manual_seed(seed)  # 设置PyTorch的CPU随机种子
+        torch.cuda.manual_seed_all(seed)  # 设置所有GPU的随机种子
+
+        # 默认情况下，关闭CuDNN的确定性模式
         torch.backends.cudnn.deterministic = False
 
-    if cudnn_deterministic:
-        torch.backends.cudnn.deterministic = True
-        warnings.warn('You have chosen to seed training. '
-                      'This will turn on the CUDNN deterministic setting, '
-                      'which can slow down your training considerably! '
-                      'You may see unexpected behavior when restarting '
-                      'from checkpoints.')
+    if cudnn_deterministic:  # 如果需要启用CuDNN的确定性模式
+        torch.backends.cudnn.deterministic = True  # 启用CuDNN确定性模式
+        warnings.warn('您选择了设置种子进行训练。'
+                      '这将开启CuDNN的确定性设置，'
+                      '这可能会显著降低训练速度！'
+                      '您可能在从检查点重启训练时遇到意外的行为。')  # 发出警告
+
+
+# def seed_everything(seed, cudnn_deterministic=False):
+#     """
+#     Function that sets seed for pseudo-random number generators in:
+#     pytorch, numpy, python.random
+#
+#     Args:
+#         seed: the integer value seed for global random state
+#     """
+#     if seed is not None:
+#         print(f"Global seed set to {seed}")
+#         random.seed(seed)
+#         np.random.seed(seed)
+#         torch.manual_seed(seed)
+#         torch.cuda.manual_seed_all(seed)
+#         torch.backends.cudnn.deterministic = False
+#
+#     if cudnn_deterministic:
+#         torch.backends.cudnn.deterministic = True
+#         warnings.warn('You have chosen to seed training. '
+#                       'This will turn on the CUDNN deterministic setting, '
+#                       'which can slow down your training considerably! '
+#                       'You may see unexpected behavior when restarting '
+#                       'from checkpoints.')
 
 def merge_opts_to_config(config, opts):
     def modify_dict(c, nl, v):

@@ -140,30 +140,45 @@ class Trainer(object):
         return samples
 
     def restore(self, raw_dataloader, shape=None, coef=1e-1, stepsize=1e-1, sampling_steps=50):
-        if self.logger is not None:
-            tic = time.time()
-            self.logger.log_info('Begin to restore...')
-        model_kwargs = {}
-        model_kwargs['coef'] = coef
-        model_kwargs['learning_rate'] = stepsize
-        samples = np.empty([0, shape[0], shape[1]])
-        reals = np.empty([0, shape[0], shape[1]])
-        masks = np.empty([0, shape[0], shape[1]])
+        if self.logger is not None:  # 如果提供了日志记录器
+            tic = time.time()  # 记录开始时间
+            self.logger.log_info('开始数据恢复...')  # 记录日志
 
+        # 设置模型的参数
+        model_kwargs = {}  # 用于传递给模型的额外参数
+        model_kwargs['coef'] = coef  # 设置系数，用于控制恢复过程中的一些参数
+        model_kwargs['learning_rate'] = stepsize  # 设置学习率
+
+        # 初始化用于存储样本、真实数据和掩码的空数组
+        samples = np.empty([0, shape[0], shape[1]])  # 用于存储生成的样本
+        reals = np.empty([0, shape[0], shape[1]])  # 用于存储原始数据
+        masks = np.empty([0, shape[0], shape[1]])  # 用于存储掩码
+
+        # 遍历数据加载器中的每个批次
         for idx, (x, t_m) in enumerate(raw_dataloader):
-            x, t_m = x.to(self.device), t_m.to(self.device)
-            if sampling_steps == self.model.num_timesteps:
-                sample = self.ema.ema_model.sample_infill(shape=x.shape, target=x*t_m, partial_mask=t_m,
+            x, t_m = x.to(self.device), t_m.to(self.device)  # 将数据和掩码移到指定设备上
+
+            # 根据sampling_steps的不同选择不同的恢复方法
+            if sampling_steps == self.model.num_timesteps:  # 如果使用完整的扩散步骤
+                # 使用完整的采样过程进行数据恢复
+                sample = self.ema.ema_model.sample_infill(shape=x.shape, target=x * t_m, partial_mask=t_m,
                                                           model_kwargs=model_kwargs)
-            else:
-                sample = self.ema.ema_model.fast_sample_infill(shape=x.shape, target=x*t_m, partial_mask=t_m, model_kwargs=model_kwargs,
+            else:  # 否则使用快速采样
+                # 使用快速采样过程进行数据恢复
+                sample = self.ema.ema_model.fast_sample_infill(shape=x.shape, target=x * t_m, partial_mask=t_m,
+                                                               model_kwargs=model_kwargs,
                                                                sampling_timesteps=sampling_steps)
 
-            samples = np.row_stack([samples, sample.detach().cpu().numpy()])
-            reals = np.row_stack([reals, x.detach().cpu().numpy()])
-            masks = np.row_stack([masks, t_m.detach().cpu().numpy()])
-        
-        if self.logger is not None:
-            self.logger.log_info('Imputation done, time: {:.2f}'.format(time.time() - tic))
+            # 将恢复后的样本、原始数据和掩码添加到相应的数组中
+            samples = np.row_stack([samples, sample.detach().cpu().numpy()])  # 堆叠样本数据
+            reals = np.row_stack([reals, x.detach().cpu().numpy()])  # 堆叠原始数据
+            masks = np.row_stack([masks, t_m.detach().cpu().numpy()])  # 堆叠掩码数据
+
+        if self.logger is not None:  # 如果提供了日志记录器
+            self.logger.log_info('数据恢复完成，耗时: {:.2f}秒'.format(time.time() - tic))  # 记录完成时间和耗时
+
+        # 返回恢复后的样本、原始数据和掩码
         return samples, reals, masks
+        # 注释掉的代码行表明原本可能只返回样本数据
         # return samples
+
