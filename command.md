@@ -15,6 +15,6 @@ python main.py --name trajectory_10_20 --config_file ./Config/trajectory_10_20.y
 ```
 cd /workspace/Diffusion-TS
 conda activate diffusion-TS
-python main.py --name trajectory_10_20 --config_file  ./Config/trajectory_10_20.yaml --gpu 0 --sample 1 --milestone 10 --mode predict --pred_len 10
+python main.py --name trajectory_10_20 --config_file  ./Config/trajectory_10_20.yaml --gpu 0 --sample 1 --milestone 10 --mode predict --pred_len 20
 
 ```

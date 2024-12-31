@@ -56,8 +56,8 @@ dataloader:
     target: Utils.Data_utils.real_datasets.CustomDataset
     params:
       name: etth
-      proportion: 0.9  # rate
       data_root: ./Data/datasets/ETTh.csv
+      proportion: 0.9  # rate
       window: 24  # seq_length
       save2npy: True
       neg_one_to_one: True
