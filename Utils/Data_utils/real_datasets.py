@@ -12,6 +12,7 @@ from Utils.masking_utils import noise_mask  # 导入自定义的噪声掩码生�
 from glob import glob
 from sklearn.preprocessing import StandardScaler
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import matplotlib.pyplot as plt
 
 class CustomDataset(Dataset):  # 定义一个继承自torch.utils.data.Dataset的自定义数据集类
     def __init__(  # 定义类的初始化方法
@@ -255,7 +256,10 @@ class CustomTrajectoryDataset(Dataset):  # 自定义数据集类，继承自torc
         self.style, self.distribution, self.mean_mask_length = style, distribution, mean_mask_length
         self.data_columns_dtype = kwargs.get('data_columns_dtype', {})
         self.data_columns = list(self.data_columns_dtype.keys())  # 从YAML配置中获取列名
-        self.all_data, self.scaler, self.trajectory_lengths = self.read_data(data_root)  # 读取所有csv数据，并进行归一化
+        self.train_stride = kwargs.get('train_stride', 1)
+        self.test_stride = kwargs.get('test_stride', 1)
+        self.noise_ratio = kwargs.get('noise_ratio', 0.0005)
+        self.all_data, self.scaler, self.trajectory_lengths, self.data_ranges = self.read_data(data_root)  # 读取所有csv数据，并进行归一化
         self.dir = os.path.join(output_dir, 'samples')
         os.makedirs(self.dir, exist_ok=True)
 
@@ -269,8 +273,15 @@ class CustomTrajectoryDataset(Dataset):  # 自定义数据集类，继承自torc
         self.save2npy = save2npy
         self.auto_norm = neg_one_to_one
 
+        # Add noise before normalization
+        self.noisy_all_data = [self.add_noise(traj.copy()) for traj in self.all_data]  # 添加噪音，深拷贝
+
         # Normalize each trajectory individually
-        self.data = [self.__normalize(traj) for traj in self.all_data]
+        # self.data = [self.__normalize(traj) for traj in self.all_data]
+
+        # Normalize each trajectory individually
+        self.data = [self.__normalize(traj) for traj in self.noisy_all_data]  # 归一化后的数据
+        self.original_norm_data = [self.__normalize(traj) for traj in self.all_data]  # 未添加噪音的归一化后的数据
 
         # Concatenate all samples after applying window
         # 获取'split_mode'参数，如果未提供则默认设为 'trajectory'
@@ -289,87 +300,150 @@ class CustomTrajectoryDataset(Dataset):  # 自定义数据集类，继承自torc
                 raise NotImplementedError(
                     "Missing ratio or predict length must be set when test.")  # 如果测试集既没有缺失值，也没有预测长度，则报错
         self.sample_num = self.samples.shape[0]  # 设置样本数量
+        # if period == 'train':  # 可视化部分仅在训练集上进行
+        #     self.visualize_noise(5000000, save_path=os.path.join(output_dir, 'noise_visualization'))
 
-    def __getsamples(self, data, proportion, seed, split_mode='trajectory'):
+    def visualize_noise(self, visualization_interval, save_path='./'):
         """
-        将数据划分成窗口，并分为训练集和测试集。
+        可视化添加噪声的效果。
 
         Args:
-            data: 包含所有轨迹的列表。
-            proportion: 训练集比例。
-            seed: 随机种子。
-            split_mode: 分割方式，'trajectory' 表示整轨分割，'in-trajectory' 表示轨迹内分割。
+            visualization_interval: 多少个轨迹样本，可视化绘图一次。
+            save_path: 保存可视化图片的路径。
         """
+        os.makedirs(save_path, exist_ok=True)
+        num_trajectories = len(self.all_data)
+
+        for start_idx in range(0, num_trajectories, visualization_interval):
+            end_idx = min(start_idx + visualization_interval, num_trajectories)
+
+            # 选择当前批次的轨迹索引
+            current_batch_indices = list(range(start_idx, end_idx))
+
+            for idx in current_batch_indices:
+                original_traj = self.all_data[idx]
+                noisy_traj = self.noisy_all_data[idx]
+                normalized_original_traj = self.original_norm_data[idx]
+                normalized_noisy_traj = self.data[idx]
+
+                for var_idx in range(self.var_num):
+                    plt.figure(figsize=(14, 8))
+
+                    # 原始数据对比
+                    plt.subplot(2, 1, 1)
+                    plt.plot(original_traj[:, var_idx], label='Original', color='blue')
+                    plt.plot(noisy_traj[:, var_idx], label='Noisy', color='red', alpha=0.7)
+                    plt.title(f'Original vs Noisy Data - Trajectory {idx} - Variable {var_idx}')
+                    plt.xlabel('Time Step')
+                    plt.ylabel('Value')
+                    plt.legend()
+
+                    # 归一化后的数据对比
+                    plt.subplot(2, 1, 2)
+                    plt.plot(normalized_original_traj[:, var_idx], label='Normalized Original', color='blue')
+                    plt.plot(normalized_noisy_traj[:, var_idx], label='Normalized Noisy', color='red', alpha=0.7)
+                    plt.title(f'Normalized Original vs Normalized Noisy Data - Trajectory {idx} - Variable {var_idx}')
+                    plt.xlabel('Time Step')
+                    plt.ylabel('Value')
+                    plt.legend()
+
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(save_path, f'trajectory_{idx}_variable_{var_idx}.png'))
+                    plt.close()
+
+
+
+    def add_noise(self, data):
+        """
+        给数据添加噪声，在归一化之前添加。
+
+        Args:
+            data: 一个轨迹的数据，形状为 (轨迹长度, 变量数)。
+
+        Returns:
+            添加了噪声的数据。
+        """
+        noise = np.random.normal(0, 1, size=data.shape)  # 生成标准正态分布的噪声
+        for i in range(data.shape[-1]):
+            noise[:, i] *= self.data_ranges[i] * self.noise_ratio  # 根据每个变量的范围调整噪声强度, 注意这里使用了原始数据的范围
+        return data + noise
+
+    def __getsamples(self, data, proportion, seed, split_mode='trajectory'):
         train_data_list = []
         test_data_list = []
 
-        # Store the state of the RNG to restore later.
         st0 = np.random.get_state()
         np.random.seed(seed)
 
         if split_mode == 'in-trajectory':
             for traj in data:
                 size = traj.shape[0]
-
-                # Sliding window within each trajectory
-                x = np.zeros((max(size - self.window + 1, 0), self.window, self.var_num))
-                for i in range(max(size - self.window + 1, 0)):
+                # 根据步长计算需要多少个窗口
+                num_windows = max(
+                    (size - self.window) // (self.train_stride if split_mode == 'train' else self.test_stride) + 1, 0)
+                x = np.zeros((num_windows, self.window, self.var_num))
+                idx = 0
+                for i in range(0, size - self.window + 1,
+                               self.train_stride if split_mode == 'train' else self.test_stride):
                     start = i
                     end = i + self.window
-                    x[i, :, :] = traj[start:end, :]
+                    x[idx, :, :] = traj[start:end, :]
+                    idx += 1
 
                 # Split trajectory into train and test based on proportion
-                # 随机划分
-                all_indices = np.arange(max(size - self.window + 1, 0))  # 获取所有滑窗样本的索引
-                np.random.shuffle(all_indices)  # 打乱索引
-
-                regular_train_num = int(np.ceil(len(all_indices) * proportion))  # 重新计算训练集的样本数量
+                all_indices = np.arange(num_windows)
+                np.random.shuffle(all_indices)
+                regular_train_num = int(np.ceil(num_windows * proportion))
 
                 regular_train_id = all_indices[:regular_train_num]
                 irregular_train_id = all_indices[regular_train_num:]
 
                 if len(regular_train_id) > 0:
                     train_data_list.append(x[regular_train_id])
+                    # train_data_list.append(x[regular_train_id][:-1])  # 添加这行：丢弃最后一个
                 if len(irregular_train_id) > 0:
                     test_data_list.append(x[irregular_train_id])
+                    # test_data_list.append(x[irregular_train_id][:-1])  # 添加这行：丢弃最后一个
+
 
         elif split_mode == 'trajectory':
-            # Shuffle the order of trajectories
             traj_indices = np.arange(len(data))
-            # np.random.shuffle(traj_indices) #不打乱顺序，保持和patchTST的测试集一样。
-
-            # Split trajectories into train and test sets
             num_train_traj = int(len(data) * proportion)
             train_traj_indices = traj_indices[:num_train_traj]
             test_traj_indices = traj_indices[num_train_traj:]
 
-            # Apply sliding window to each trajectory in train and test sets
             for idx in train_traj_indices:
                 traj = data[idx]
                 size = traj.shape[0]
-                x = np.zeros((max(size - self.window + 1, 0), self.window, self.var_num))
-                for i in range(max(size - self.window + 1, 0)):
+                num_windows = max((size - self.window) // self.train_stride + 1, 0)
+                x = np.zeros((num_windows, self.window, self.var_num))
+                idx = 0
+                for i in range(0, size - self.window + 1, self.train_stride):
                     start = i
                     end = i + self.window
-                    x[i, :, :] = traj[start:end, :]
+                    x[idx, :, :] = traj[start:end, :]
+                    idx += 1
                 if len(x) > 0:
+                    # x = x[:-1]
                     train_data_list.append(x)
 
             for idx in test_traj_indices:
                 traj = data[idx]
                 size = traj.shape[0]
-                x = np.zeros((max(size - self.window + 1, 0), self.window, self.var_num))
-                for i in range(max(size - self.window + 1, 0)):
+                num_windows = max((size - self.window) // self.test_stride + 1, 0)
+                x = np.zeros((num_windows, self.window, self.var_num))
+                idx = 0
+                for i in range(0, size - self.window + 1, self.test_stride):
                     start = i
                     end = i + self.window
-                    x[i, :, :] = traj[start:end, :]
+                    x[idx, :, :] = traj[start:end, :]
+                    idx += 1
                 if len(x) > 0:
+                    # x = x[:-1]
                     test_data_list.append(x)
-
         else:
             raise ValueError(f"Invalid split_mode: {split_mode}")
 
-        # Restore RNG.
         np.random.set_state(st0)
 
         return train_data_list, test_data_list
@@ -392,9 +466,11 @@ class CustomTrajectoryDataset(Dataset):  # 自定义数据集类，继承自torc
         data = self.scaler.transform(rawdata)  # 使用scaler进行归一化
         if self.auto_norm:  # 如果进行[-1,1]归一化
             data = normalize_to_neg_one_to_one(data)  # 归一化到[-1,1]
+        # data = data*100
         return data
 
     def __unnormalize(self, data):
+        # data = data / 100  # 先除以 100
         """使用scaler进行反归一化，并且可以可选的进行[-1, 1]反归一化。"""
         if self.auto_norm:  # 如果进行[-1,1]归一化
             data = unnormalize_to_zero_to_one(data)  # 反归一化到[0,1]
@@ -428,7 +504,7 @@ class CustomTrajectoryDataset(Dataset):  # 自定义数据集类，继承自torc
         all_data = []
         trajectory_lengths = []
         for file in csv_files:  # 遍历所有csv文件
-            df = pd.read_csv(file, usecols= self.data_columns, dtype=self.data_columns_dtype, engine='c')  # 读取当前csv文件
+            df = pd.read_csv(file, usecols=self.data_columns, dtype=self.data_columns_dtype, engine='c')  # 读取当前csv文件
             df['Id'] = df['Id'].astype(str)  # 将id列转化为str类型
             feature_columns = self.data_columns.copy()  # 创建副本
             if 'Id' in feature_columns:
@@ -441,7 +517,13 @@ class CustomTrajectoryDataset(Dataset):  # 自定义数据集类，继承自torc
         scaler = MinMaxScaler()
         scaler.fit(np.concatenate(all_data))
 
-        return all_data, scaler, trajectory_lengths
+        # Calculate the range of each variable before normalization
+        data_ranges = []
+        for i in range(len(feature_columns)):
+            var_data = np.concatenate([traj[:, i] for traj in all_data])
+            data_ranges.append(var_data.max() - var_data.min())
+
+        return all_data, scaler, trajectory_lengths, data_ranges
 
     def process_file(self, df, feature_columns):
         """Process each file to extract trajectories."""

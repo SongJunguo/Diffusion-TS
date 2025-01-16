@@ -1,30 +1,31 @@
-save_dir: ./OUTPUT/trajectory_10_20/2025-0103-1704 #日月-时分开始训练
+save_dir: /root/autodl-tmp/trajectory_10_20_super_big/2025-0104-1637 #日月-时分开始训练
 model:
   target: Models.interpretable_diffusion.gaussian_diffusion.Diffusion_TS
   params:
     seq_length: 120
     feature_size: 4
-    n_layer_enc: 3
-    n_layer_dec: 2
-    d_model: 64  # 4 X 16
+    n_layer_enc: 5
+    n_layer_dec: 4
+    d_model: 256
     timesteps: 500
     sampling_timesteps: 500
     loss_type: 'l1'
     beta_schedule: 'cosine'
-    n_heads: 4
-    mlp_hidden_times: 4
+    n_heads: 16 # 或 32，如果 d_model=256
+    mlp_hidden_times: 8 # 或更高
     attn_pd: 0.0
     resid_pd: 0.0
     kernel_size: 1
     padding_size: 0
+    use_ff: False
 
 solver:
-  base_lr: 5.0000e-07 #5.0e-6 #1.0e-5
+  base_lr:  1.0e-5 # 5.0000e-07 #5.0e-6 #1.0e-5
   max_epochs: 18000
-  train_mode: 'epochs'  # 设置为 'epochs' 来按 epoch 训练  或者'steps'
-  num_epochs: 70        # 指定 epoch 数量
+  train_mode: 'epochs'  # 设置为 'epochs' 来按 epochs 训练  或者'steps'
+  num_epochs: 50        # 指定 epochs 数量
   results_folder: ./Checkpoints_trajectory_10_20
-  gradient_accumulate_every: 1
+  gradient_accumulate_every: 2
   save_cycle: 1800  # max_epochs // 10 #如果是epoch训练，就每个epoch保存checkpoint，此参数无效
   ema:
     decay: 0.995
@@ -34,12 +35,12 @@ solver:
     target: engine.lr_sch.ReduceLROnPlateauWithWarmup
     params:
       factor: 0.5
-      patience: 1000
-      min_lr: 5.0e-7
+      patience: 4000
+      min_lr: 1.0e-6
       threshold: 1.0e-1
       threshold_mode: rel
       warmup_lr: 8.0e-4
-      warmup: 0 #500
+      warmup: 500
       verbose: True
 
 dataloader:
@@ -67,7 +68,7 @@ dataloader:
         TAS: float32
       split_mode: 'trajectory' # 'in-trajectory' or 'trajectory'
       train_stride: 1
-      test_stride: 50
+      test_stride: 300
       noise_ratio: 0.001
   test_dataset:
     target: Utils.Data_utils.real_datasets.CustomTrajectoryDataset
@@ -93,13 +94,13 @@ dataloader:
         TAS: float32
       split_mode: 'trajectory'
       train_stride: 1
-      test_stride: 50
+      test_stride: 300
 
     coefficient: 1.0e-2
     step_size: 5.0e-2
-    sampling_steps: 200
+    sampling_steps: 256
     noise_ratio: 0.001
 
-  batch_size: 3072  #batch_size
-  sample_size: 3072  #predict和infill的 batch_size
+  batch_size: 256  #batch_size
+  sample_size: 256  #predict和infill的 batch_size
   shuffle: True

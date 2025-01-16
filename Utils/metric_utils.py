@@ -6,7 +6,25 @@ import matplotlib.pyplot as plt
 
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
+def calculate_metrics(samples, reals, masks):
+    """计算 MSE 和 MAE 等指标"""
+    metrics = {}
+    # 确保只在非掩盖部分计算指标
+    y_true = reals[masks == 0]
+    y_pred = samples[masks == 0]
+
+    if y_true.size > 0:  # 确保有需要比较的真实值和预测值
+        metrics['MSE'] = mean_squared_error(y_true, y_pred)
+        metrics['MAE'] = mean_absolute_error(y_true, y_pred)
+    else:
+        metrics['MSE'] = float('nan')  # 或者使用 None
+        metrics['MAE'] = float('nan')  # 或者使用 None
+
+    # 你可以根据需要添加其他指标，例如 RMSE, MAPE 等
+
+    return metrics
 
 def display_scores(results):
    mean = np.mean(results)

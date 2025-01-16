@@ -3,7 +3,7 @@
   <component name="Black">
     <option name="sdkName" value="Remote Python 3.9.20 (sftp://root@172.20.67.216:422/root/anaconda3/envs/diffusion-TS/bin/python)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Remote Python 3.9.20 (sftp://root@172.20.67.216:422/root/anaconda3/envs/diffusion-TS/bin/python)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Remote Python 3.9.20 (sftp://root@172.20.67.216:422/root/anaconda3/envs/diffusion2/bin/python)" project-jdk-type="Python SDK" />
   <component name="PythonCompatibilityInspectionAdvertiser">
     <option name="version" value="3" />
   </component>
